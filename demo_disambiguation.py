@@ -1,7 +1,6 @@
 import numpy as np
 from transformers_encoder import TransformersEncoder
 from vectorspace import SensesVSM
-
 import spacy
 en_nlp = spacy.load('en_core_web_sm')  # required for lemmatization and POS-tagging
 
@@ -10,7 +9,7 @@ wn_utils = WN_Utils()  # WordNet auxilliary methods (just for describing results
 
 
 # NLM/LMMS paths and parameters
-vecs_path = '/media/dan/ElementsWORK/albert-xxlarge-v2/lmms-sp-wsd.albert-xxlarge-v2.vectors.txt'
+vecs_path = 'data/vectors/lmms-sp-wsd.albert-xxlarge-v2.vectors.txt'
 wsd_encoder_cfg = {
     'model_name_or_path': 'albert-xxlarge-v2',
     'min_seq_len': 0,
@@ -30,7 +29,7 @@ print('Done')
 
 # input sentence, with indices of token/span to disambiguate
 sentence = 'This mouse has no batteries.'
-target_idxs = [1]  # for 'mouse'
+target_idxs = [1, 4]  # for 'mouse'
 
 
 # use spacy to automatically determine lemma and POS (replace with your favorite NLP toolkit)
@@ -45,11 +44,9 @@ ctx_embeddings = wsd_encoder.token_embeddings([tokens])[0]
 target_embedding = np.array([ctx_embeddings[i][1] for i in target_idxs]).mean(axis=0)
 target_embedding = target_embedding / np.linalg.norm(target_embedding)
 
-
 # find sense embeddings that are nearest-neighbors to the target contextual embedding
 # candidates restricted by lemma and part-of-speech
-matches = senses_vsm.match_senses(target_embedding, lemma=target_lemma, postag=target_pos, topn=5)
-
+matches, top1_vec = senses_vsm.match_senses(target_embedding, lemma=target_lemma, postag=target_pos, topn=5)
 
 # report matches, showing also additional info from WordNet for each match
 for sk, sim in matches:

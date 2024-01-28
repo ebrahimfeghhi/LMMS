@@ -98,21 +98,48 @@ class SensesVSM(object):
         v1 = self.get_vec(label1)
         v2 = self.get_vec(label2)
         return np.dot(v1, v2).tolist()
+    
+    def num_senses(self, lemma, postag_list):
 
-    def match_senses(self, vec, lemma=None, postag=None, topn=100):
         relevant_sks = []
+    
         for sk in self.labels:
-            if (lemma is None) or (self.sk_lemmas[sk] == lemma):
-                if (postag is None) or (self.sk_postags[sk] == postag):
+            if (lemma is None) or (self.sk_lemmas[sk] == lemma) or ((self.sk_lemmas[sk] == lemma.lower())):
+                if (postag_list is None) or (self.sk_postags[sk] in postag_list):
                     relevant_sks.append(sk)
 
+
+        return len(relevant_sks)
+
+    def match_senses(self, vec, lemma=None, postag=None, topn=100):
+        
+        relevant_sks = []
+        
+        # WSD
+        if (lemma is not None) and (postag is not None):
+            for sk in self.labels:
+                if self.sk_lemmas[sk] == lemma:
+                        if self.sk_postags[sk] == postag:
+                            relevant_sks.append(sk)
+                            
+        # USM                
+        else:
+            relevant_sks = self.labels
+            
+              
+        if len(relevant_sks) == 0:
+            return None, None
+      
         relevant_sks_idxs = [self.indices[sk] for sk in relevant_sks]
         sims = np.dot(self.vectors[relevant_sks_idxs], np.array(vec))
         matches = list(zip(relevant_sks, sims))
 
         matches = sorted(matches, key=lambda x: x[1], reverse=True)
-
-        return matches[:topn]
+        
+        sims_indices_sorted = np.argsort(sims)
+        top_1_sense_vector = self.vectors[relevant_sks_idxs][sims_indices_sorted[-1]]
+        
+        return matches[:topn], top_1_sense_vector
 
     def most_similar_vec(self, vec, topn=10):
         sims = np.dot(self.vectors, vec).astype(np.float32)
