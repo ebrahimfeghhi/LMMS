@@ -7,16 +7,17 @@ en_nlp = spacy.load('en_core_web_sm')  # required for lemmatization and POS-tagg
 from wn_utils import WN_Utils
 wn_utils = WN_Utils()  # WordNet auxilliary methods (just for describing results)
 
+basePath = '/data/LLMs/LMMS/'
 
 # NLM/LMMS paths and parameters
-vecs_path = 'data/vectors/lmms-sp-wsd.albert-xxlarge-v2.vectors.txt'
+vecs_path = f'{basePath}data/vectors/lmms-sp-wsd.roberta-large.vectors.txt'
 wsd_encoder_cfg = {
-    'model_name_or_path': 'albert-xxlarge-v2',
+    'model_name_or_path': 'roberta-large',
     'min_seq_len': 0,
     'max_seq_len': 512,
-    'layers': [-n for n in range(1, 12 + 1)],  # all layers, with reversed indices
+    'layers': [-n for n in range(1, 24 + 1)],  # all layers, with reversed indices
     'layer_op': 'ws',
-    'weights_path': 'data/weights/lmms-sp-wsd.albert-xxlarge-v2.weights.txt',
+    'weights_path': f'{basePath}data/weights/lmms-sp-wsd.roberta-large.weights.txt',
     'subword_op': 'mean'
 }
 
@@ -47,6 +48,7 @@ target_embedding = target_embedding / np.linalg.norm(target_embedding)
 # find sense embeddings that are nearest-neighbors to the target contextual embedding
 # candidates restricted by lemma and part-of-speech
 matches, top1_vec = senses_vsm.match_senses(target_embedding, lemma=target_lemma, postag=target_pos, topn=5)
+senses_vsm.num_senses(target_lemma, target_pos)
 
 # report matches, showing also additional info from WordNet for each match
 for sk, sim in matches:

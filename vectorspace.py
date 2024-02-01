@@ -80,7 +80,20 @@ class SensesVSM(object):
         for s in self.labels:
             self.sks_by_pos[self.sk_postags[s]].append(s)
         self.known_postags = set(self.sks_by_pos.keys())
+        
+        # create a dictionary where the keys are word_pos
+        # and the values are the sensekeys for that word/pos
+        # combination.
+        self.word_pos_sk= defaultdict(lambda: defaultdict(list))
+        for sk in self.labels:
 
+            # extract word from sensekey
+            lemma = get_sk_lemma(sk)
+            pos = get_sk_pos(sk)
+            
+            # add sensekey, lowercase lemma for easier search
+            self.word_pos_sk[lemma.lower()][pos].append(sk)
+    
     def save_npz(self):
         npz_path = self.vecs_path.replace('.txt', '.npz')
         np.savez_compressed(npz_path,
@@ -102,7 +115,7 @@ class SensesVSM(object):
     def num_senses(self, lemma, postag_list):
 
         relevant_sks = []
-    
+        breakpoint()
         for sk in self.labels:
             if (lemma is None) or (self.sk_lemmas[sk] == lemma) or ((self.sk_lemmas[sk] == lemma.lower())):
                 if (postag_list is None) or (self.sk_postags[sk] in postag_list):
@@ -110,7 +123,51 @@ class SensesVSM(object):
 
 
         return len(relevant_sks)
-
+    
+    def num_senses_fast(self, lemma_arr, postag_arr):
+        
+        num_senses_dict = {}
+        for i, (lemma, postag) in enumerate(zip(lemma_arr, postag_arr)):
+            
+            # find the number of senses for that lemma + postag
+            num_senses_dict[f'{lemma}_{postag}'] = len(self.word_pos_sk[lemma.lower()][postag])
+        
+        return num_senses_dict
+    
+    def get_sense_embeddings_sentence(self, lemma_arr, postag_arr, ctx_embeddings):
+   
+        
+        sense_embeddings = []
+        no_sense_embedding_words = []
+        
+        for i, (lemma, postag, ctx_embed) in enumerate(zip(lemma_arr, postag_arr, ctx_embeddings)):
+            
+            # get relevant sense embeddings
+            relevant_sks = self.word_pos_sk[lemma.lower()][postag]
+            
+            # if none, add to this list so that we can get GloVe embeddings
+            if len(relevant_sks) == 0:
+                no_sense_embedding_words.append(lemma)
+                continue
+                
+            
+            # get indices for each sensekey
+            relevant_sks_idxs = [self.indices[sk] for sk in relevant_sks]
+            
+            # use indices to get sense embeddings, compute cosine sim with contextual embed 
+            norm_ctx_embed = ctx_embed[1] / np.linalg.norm(ctx_embed[1])
+            sims = np.dot(self.vectors[relevant_sks_idxs], norm_ctx_embed)
+            
+            #matches = list(zip(relevant_sks, sims))
+            #matches = sorted(matches, key=lambda x: x[1], reverse=True)
+            #sims_indices_sorted = np.argsort(sims)
+            top_matching_idx = np.argmax(sims)
+            top_1_sense_vector = self.vectors[relevant_sks_idxs][top_matching_idx]
+            sense_embeddings.append(top_1_sense_vector) 
+        
+        return sense_embeddings, no_sense_embedding_words
+    
+    
     def match_senses(self, vec, lemma=None, postag=None, topn=100):
         
         relevant_sks = []
@@ -121,16 +178,15 @@ class SensesVSM(object):
                 if self.sk_lemmas[sk] == lemma:
                         if self.sk_postags[sk] == postag:
                             relevant_sks.append(sk)
-                            
+            relevant_sks_idxs = [self.indices[sk] for sk in relevant_sks]
+            
         # USM                
         else:
-            relevant_sks = self.labels
+            relevant_sks_idxs = self.indices
             
-              
         if len(relevant_sks) == 0:
             return None, None
       
-        relevant_sks_idxs = [self.indices[sk] for sk in relevant_sks]
         sims = np.dot(self.vectors[relevant_sks_idxs], np.array(vec))
         matches = list(zip(relevant_sks, sims))
 
@@ -140,7 +196,29 @@ class SensesVSM(object):
         top_1_sense_vector = self.vectors[relevant_sks_idxs][sims_indices_sorted[-1]]
         
         return matches[:topn], top_1_sense_vector
-
+    
+    def match_senses_usm(self, ctx_embedding_mat, topn, average=False):
+        
+        '''
+        :param embedding_mat: matrix with contextual embeddings 
+        :param int topn: collect top N sense embeddings (based on cosine sim)
+        :param bool average: If true, take mean across top N sense embeddings 
+        with the weights being the softmax of the cosine sim values 
+        
+        Outputs the closest/average of closest matching sense embeddings for each contextual embedding.
+        Does not restrict sense embeddings based on word or POS.
+        '''
+        
+        sims = self.vectors@ctx_embedding_mat
+        sorted_idxs_topN = np.argsort(sims, axis=0)[-topn:, :]
+        topN_vecs = self.vectors[sorted_idxs_topN, :]
+        
+        if average:
+            raise NotImplementedError()
+        else:
+            # if not averaging, just pick the one with the highest cosine simalarity 
+            return topN_vecs[-1]
+        
     def most_similar_vec(self, vec, topn=10):
         sims = np.dot(self.vectors, vec).astype(np.float32)
         sims_ = sims.tolist()
